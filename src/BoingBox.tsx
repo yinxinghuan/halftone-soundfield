@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { AudioEngine, type SoundSettings } from './AudioEngine'
 import { SoftBoxStage } from './SoftBoxStage'
+import { isInAigram, telegramId, useGameEvent, useUpload } from './shared/runtime'
+import { useGameSave } from './shared/save'
+import { appendMessage, guestbookNotifyConfig, newMessage } from './shared/social/guestbook'
+import SoundWall from './social/SoundWall'
+import { useSoundWall } from './social/useSoundWall'
+import type { SoundSocialSave, SoundWallEntry, SoundWork } from './social/types'
 import './boing-box.less'
 
 type Phase = 'entry' | 'entering' | 'studio' | 'leaving'
@@ -17,6 +23,8 @@ const zh = {
   ready: '拖动盒子改变重力 · 轻点盒子弹起声音', waiting: '等待第一次碰撞…', heard: '声音已装入盒中',
   play: '播放', pause: '暂停', rerecord: '重新录音', bounce: '弹性', pitch: '音高', space: '空间',
   hintBounce: '碰撞密度', hintPitch: '转调幅度', hintSpace: '回声长度',
+  wall: '作品墙', publish: '发布', making: '制作中', publishTitle: '发布当前声音软盒？',
+  publishPrivacy: '我们会录制当前碰撞与效果器输出的约 5 秒成品预览。麦克风原始录音不会上传。', cancel: '取消', consent: '同意并发布', recordingPreview: '正在录制 5 秒预览…', close: '关闭',
 }
 const en: Copy = {
   eyebrow: 'TINKER / SAMPLE 02', title: 'Boing Sound Box', intro: 'Put a tiny sound inside a soft box',
@@ -29,6 +37,8 @@ const en: Copy = {
   ready: 'Drag to change gravity · tap to toss the sounds', waiting: 'Waiting for the first collision…', heard: 'Sound is inside the box',
   play: 'Play', pause: 'Pause', rerecord: 'Record again', bounce: 'Bounce', pitch: 'Pitch', space: 'Space',
   hintBounce: 'collision rate', hintPitch: 'transpose range', hintSpace: 'echo length',
+  wall: 'Sound wall', publish: 'Publish', making: 'Making', publishTitle: 'Publish this sound box?',
+  publishPrivacy: 'We will capture a 5-second preview of the processed collision mix. Your original microphone recording is never uploaded.', cancel: 'Cancel', consent: 'Agree and publish', recordingPreview: 'Capturing 5-second preview…', close: 'Close',
 }
 
 function getCopy() {
@@ -36,13 +46,16 @@ function getCopy() {
   return forced === 'en' || (!forced && !navigator.language.toLowerCase().startsWith('zh')) ? en : zh
 }
 
-function Icon({ name }: { name: 'mic' | 'play' | 'pause' | 'refresh' | 'lock' }) {
+function Icon({ name }: { name: 'mic' | 'play' | 'pause' | 'refresh' | 'lock' | 'wall' | 'publish' | 'close' }) {
   const paths = {
     mic: <><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v4M8.5 21h7"/></>,
     play: <path fill="currentColor" stroke="none" d="M8 5.5v13l10-6.5z"/>,
     pause: <><path d="M8.5 6v12M15.5 6v12"/></>,
     refresh: <><path d="M19 8a8 8 0 1 0 1 7M19 4v4h-4"/></>,
     lock: <><rect x="6.5" y="10" width="11" height="9" rx="2"/><path d="M9 10V7.5a3 3 0 0 1 6 0V10M12 13.5v2"/></>,
+    wall: <><path d="M4 5h16v14H4zM4 10h16M10 5v14"/><circle cx="15" cy="14.5" r="2"/></>,
+    publish: <><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 14v5h14v-5"/></>,
+    close: <path d="M6 6l12 12M18 6 6 18"/>,
   }
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>
 }
@@ -74,12 +87,28 @@ export default function BoingBox() {
   const [running, setRunning] = useState(false)
   const [collided, setCollided] = useState(false)
   const [settings, setSettings] = useState<SoundSettings>({ bounce: 66, pitch: 58, space: 46 })
+  const { savedData: socialSaved, persist: persistSocial } = useGameSave<SoundSocialSave>('halftone-soundfield-social')
+  const [socialMirror, setSocialMirror] = useState<SoundSocialSave | undefined>(undefined)
+  const [showWall, setShowWall] = useState(false)
+  const [showPublish, setShowPublish] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const [publishError, setPublishError] = useState('')
+  const { upload } = useUpload()
+  const socialEvents = useGameEvent()
+  const wall = useSoundWall(socialMirror?.works ?? [])
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const holdingRef = useRef(false)
   const recordStartedAtRef = useRef(0)
   const recordTimerRef = useRef<number | null>(null)
   const transitionRef = useRef<number | null>(null)
+  const socialNotifiedRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (socialMirror === undefined && socialSaved !== undefined) {
+      setSocialMirror(socialSaved ?? { works: [], likes: [], messages: [] })
+    }
+  }, [socialSaved, socialMirror])
 
   useEffect(() => () => {
     streamRef.current?.getTracks().forEach(track => track.stop())
@@ -161,11 +190,62 @@ export default function BoingBox() {
     setSettings(current => ({ ...current, [key]: value }))
   }
 
+  async function publishSoundWork() {
+    if (phase !== 'studio' || !socialMirror || publishing) return
+    if (!isInAigram) { setPublishError(copy === zh ? '请在 Aigram 中打开后发布作品。' : 'Open in Aigram to publish this work.'); return }
+    setPublishError(''); setPublishing(true); setRunning(true)
+    try {
+      await new Promise(resolve => window.setTimeout(resolve, 140))
+      const preview = await audio.recordPreview(5000)
+      const extension = preview.type.includes('mp4') ? 'm4a' : 'webm'
+      const uploaded = await upload(preview, `boing-sound-${Date.now()}.${extension}`)
+      const work: SoundWork = {
+        id: crypto.randomUUID(), createdAt: Date.now(), audioUrl: uploaded.url, durationMs: 5000,
+        visualSeed: Math.floor(Math.random() * 10000), recipe: { ...settings },
+      }
+      const next: SoundSocialSave = { ...socialMirror, works: [work, ...socialMirror.works].slice(0, 20) }
+      setSocialMirror(next); persistSocial(next); socialEvents.trigger('work:publish')
+      setShowPublish(false); setShowWall(true)
+      window.setTimeout(() => void wall.refresh(), 1500)
+    } catch { setPublishError(copy === zh ? '发布没有完成，请检查网络后再试一次。' : 'Publishing did not finish. Check your connection and try again.') }
+    finally { setPublishing(false) }
+  }
+
+  function toggleSocialLike(entry: SoundWallEntry) {
+    if (!socialMirror || !isInAigram) return
+    const liked = socialMirror.likes.includes(entry.work.id)
+    const next: SoundSocialSave = { ...socialMirror, likes: liked ? socialMirror.likes.filter(id => id !== entry.work.id) : [...socialMirror.likes, entry.work.id] }
+    setSocialMirror(next); persistSocial(next)
+    if (!liked) {
+      const self = entry.userId === 'self' || entry.userId === telegramId
+      const notifyKey = `like:${entry.work.id}`
+      const notify = !self && !socialNotifiedRef.current.has(notifyKey)
+      if (notify) socialNotifiedRef.current.add(notifyKey)
+      socialEvents.trigger(`work:like:${entry.work.id}`, notify ? { actions: [{ type: 'notify', target_user_id: entry.userId, image: { ref_url: 'https://yinxinghuan.github.io/halftone-soundfield/poster.png', prompt: 'transparent soft glass cube filled with blue and golden bouncing sound droplets' }, message: { template: '{sender_name} 喜欢了你的声音软盒。', variables: ['sender_name'] } }] } : undefined)
+    }
+    window.setTimeout(() => void wall.refresh(), 1500)
+  }
+
+  function sendSocialMessage(entry: SoundWallEntry, text: string) {
+    if (!socialMirror || !isInAigram) return
+    const authorId = entry.userId === 'self' ? telegramId || undefined : entry.userId
+    const message = newMessage(entry.work.id, authorId, text)
+    if (!message) return
+    const next = appendMessage(socialMirror, message)
+    setSocialMirror(next); persistSocial(next)
+    const notifyKey = `note:${entry.work.id}`
+    if (authorId && authorId !== telegramId && !socialNotifiedRef.current.has(notifyKey)) {
+      socialNotifiedRef.current.add(notifyKey)
+      socialEvents.trigger(`work:note:${entry.work.id}`, guestbookNotifyConfig({ toUserId: authorId, refUrl: 'https://yinxinghuan.github.io/halftone-soundfield/poster.png', note: text, template: '{sender_name} 给你的声音软盒留了言。', imagePrompt: 'transparent glass sound box with elastic blue and gold droplets' }))
+    }
+    window.setTimeout(() => void wall.refresh(), 1500)
+  }
+
   const studioVisible = phase !== 'entry'
   return <main className={`bb bb--${phase} ${recording ? 'bb--recording' : ''}`}>
     <div className="bb__vignette" aria-hidden="true" />
     <header className="bb__header">
-      <p>{copy.eyebrow}</p><h1>{copy.title}</h1><span>{studioVisible ? (collided ? copy.heard : copy.waiting) : copy.intro}</span>
+      <p>{copy.eyebrow}</p><h1>{copy.title}</h1><div className="bb__headerRight"><span>{studioVisible ? (collided ? copy.heard : copy.waiting) : copy.intro}</span><button onClick={() => setShowWall(true)}><Icon name="wall"/><b>{copy.wall}</b></button></div>
     </header>
 
     {studioVisible && <section className="bb__studio" aria-label={copy.title}>
@@ -177,7 +257,7 @@ export default function BoingBox() {
             <Icon name={running ? 'pause' : 'play'} /><span>{running ? copy.pause : copy.play}</span>
           </button>
           <span className={`bb__live ${running ? 'is-live' : ''}`}><i />{running ? 'LIVE' : 'HOLD'}</span>
-          <button className="bb__again" onPointerDown={recordAgain}><Icon name="refresh" />{copy.rerecord}</button>
+          <div className="bb__transportTools"><button className="bb__publish" onClick={() => { setPublishError(''); setShowPublish(true) }} disabled={publishing || !socialMirror}><Icon name="publish" />{publishing ? copy.making : copy.publish}</button><button className="bb__again" onPointerDown={recordAgain}><Icon name="refresh" />{copy.rerecord}</button></div>
         </div>
         <div className="bb__controls">
           {([
@@ -203,5 +283,7 @@ export default function BoingBox() {
       {permissionIssue && <p className="bb__error" role="alert">{permissionIssue === 'container' ? copy.containerBlocked : permissionIssue === 'unsupported' ? copy.unsupported : permissionIssue === 'too-short' ? copy.tooShort : copy.permission}</p>}
       <button className="bb__demo" onPointerDown={useDemo} disabled={recording}>{copy.demo}<span>↗</span></button>
     </section>}
+    {showPublish && <div className="bb__publishBackdrop" onClick={() => !publishing && setShowPublish(false)}><section className="bb__publishSheet" role="dialog" aria-modal="true" aria-labelledby="bb-publish-title" onClick={event => event.stopPropagation()}><header><div><p>PUBLIC SOUND</p><h2 id="bb-publish-title">{copy.publishTitle}</h2></div><button onClick={() => setShowPublish(false)} disabled={publishing} aria-label={copy.close}><Icon name="close"/></button></header><div className="bb__publishBox" aria-hidden="true"><i/><i/><i/><i/><i/></div><p>{copy.publishPrivacy}</p>{publishError && <p className="bb__publishError" role="alert">{publishError}</p>}<div className="bb__publishActions"><button onClick={() => setShowPublish(false)} disabled={publishing}>{copy.cancel}</button><button onClick={() => void publishSoundWork()} disabled={publishing}>{publishing ? copy.recordingPreview : copy.consent}</button></div></section></div>}
+    {showWall && <SoundWall mode="boing" entries={wall.entries} loaded={wall.loaded} likesByWork={wall.likesByWork} notesByWork={wall.notesByWork} myLikes={socialMirror?.likes ?? []} myMessages={socialMirror?.messages} myUserId={telegramId || undefined} onClose={() => setShowWall(false)} onToggleLike={toggleSocialLike} onSendMessage={sendSocialMessage}/>}
   </main>
 }

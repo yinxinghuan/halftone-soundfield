@@ -24,6 +24,7 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; u
 .bb__header p { grid-column: 1 / -1; margin: 0 0 7px; color: #4e6380; font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .15em; }
 .bb__header h1 { margin: 0; color: var(--ink); font: 700 clamp(23px, 6.5vw, 30px)/1 ui-serif, Georgia, "Noto Serif SC", serif; letter-spacing: -.035em; }
 .bb__header span { max-width: 150px; color: #4d617b; font-size: 12px; line-height: 1.25; text-align: right; }
+.bb__headerRight { display:flex; align-items:center; justify-content:flex-end; gap:9px; }.bb__headerRight button { min-height:44px; padding:0 10px; display:flex; align-items:center; gap:5px; border:1px solid rgba(23,47,81,.45); border-radius:99px; color:var(--ink); background:rgba(242,247,252,.35); pointer-events:auto; cursor:pointer; }.bb__headerRight button svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7}.bb__headerRight button b{font-size:11px;white-space:nowrap}
 
 .bb__studio { position: absolute; inset: 0; z-index: 3; opacity: 1; transform: scale(1); transition: opacity .46s ease, transform .62s cubic-bezier(.18,.82,.2,1); }
 .bb__stage { position: absolute; inset: 82px 0 238px; min-height: 260px; }
@@ -42,6 +43,7 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; u
 .bb__live.is-live { color: #166d62; }.bb__live.is-live i { background: #23a08e; box-shadow: 0 0 0 4px rgba(35,160,142,.13); animation: bb-live 1.8s ease-in-out infinite; }
 .bb__again { justify-self: end; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 8px; color: #3e536f; background: transparent; font-size: 13px; font-weight: 650; }
 .bb__again:active { color: #0f2036; }
+.bb__transportTools{justify-self:end;display:flex;align-items:center;gap:2px}.bb__publish{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:0 7px;color:#183d68;background:transparent;font-size:12px;font-weight:750}.bb__publish svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .bb__controls { padding: 4px 14px 7px; }
 .bb__control { min-height: 48px; display: grid; grid-template-columns: 116px minmax(0, 1fr); align-items: center; gap: 12px; border-bottom: 1px solid rgba(40,65,96,.12); }
 .bb__control:last-child { border-bottom: 0; }
@@ -78,6 +80,8 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; u
 .bb--entering .bb__studio { animation: bb-studio-enter .62s cubic-bezier(.18,.82,.2,1) both; }
 .bb--leaving .bb__studio { opacity: 0; transform: scale(.78) rotate(-4deg); pointer-events: none; }
 .bb--leaving .bb__entry { animation: bb-entry-return .44s ease both; }
+.bb__publishBackdrop{position:fixed;inset:0;z-index:80;display:flex;align-items:flex-end;justify-content:center;padding:14px;background:rgba(20,43,73,.42);backdrop-filter:blur(5px)}.bb__publishSheet{width:min(100%,520px);padding:20px;border:1px solid rgba(23,47,81,.45);border-radius:24px;color:#172f51;background:#dce8f5;box-shadow:0 -20px 55px rgba(18,42,71,.22)}.bb__publishSheet>header{display:flex;align-items:flex-start;justify-content:space-between}.bb__publishSheet>header p{margin:0 0 5px;font:800 9px/1 ui-monospace,monospace;letter-spacing:.17em}.bb__publishSheet h2{margin:0;font:700 25px/1.15 ui-serif,Georgia,"Noto Serif SC",serif}.bb__publishSheet>header button{width:44px;height:44px;display:grid;place-items:center;border:1px solid currentColor;border-radius:50%;color:inherit;background:transparent}.bb__publishSheet>header svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7}.bb__publishSheet>p{margin:13px 0;font-size:13px;line-height:1.6}.bb__publishBox{height:120px;position:relative;display:flex;align-items:center;justify-content:center;gap:7px}.bb__publishBox::before{content:"";width:96px;height:96px;position:absolute;border:1.4px solid #214e7d;border-radius:20px;background:rgba(255,255,255,.25);transform:rotate(14deg);box-shadow:inset 8px 8px 18px rgba(255,255,255,.65)}.bb__publishBox i{z-index:1;width:19px;height:19px;border-radius:45% 55% 52% 48%;background:#276faa;box-shadow:inset 3px 3px 4px rgba(255,255,255,.5);animation:bb-publish-boing 1.2s ease-in-out infinite alternate}.bb__publishBox i:nth-child(even){background:#e5bd35;animation-delay:-.4s}.bb__publishActions{display:grid;grid-template-columns:1fr 1.6fr;gap:8px}.bb__publishActions button{min-height:50px;border:1px solid #172f51;border-radius:13px;color:#172f51;background:transparent;font-weight:800}.bb__publishActions button:last-child{color:#eff6fd;background:#172f51}
+.bb__publishError{padding:9px 11px;border:1px solid #9b3948;border-radius:10px;color:#8f2e40;background:rgba(255,255,255,.25)}
 
 @keyframes bb-live { 50% { opacity: .42; transform: scale(.82); } }
 @keyframes bb-glass-float { 50% { transform: rotate(47deg) translateY(-8px) scale(1.03); } }
@@ -85,6 +89,7 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; u
 @keyframes bb-record-breathe { 50% { transform: scale(1.14); opacity: .32; } }
 @keyframes bb-studio-enter { from { opacity: 0; transform: scale(.74) rotate(7deg); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
 @keyframes bb-entry-return { from { opacity: 0; transform: scale(1.16); } to { opacity: 1; transform: scale(1); } }
+@keyframes bb-publish-boing{to{transform:translateY(-15px) scale(1.1,.84)}}
 
 @media (min-width: 700px) {
   .bb__header { left: 30px; right: 30px; top: 28px; }
@@ -101,7 +106,7 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; u
 }
 
 @media (max-width: 350px) {
-  .bb__header { left: 14px; right: 14px; }.bb__header span { display: none; }
+  .bb__header { left: 14px; right: 14px; }.bb__header span { display: none; }.bb__headerRight{gap:0}.bb__headerRight button{padding:0 9px}.bb__headerRight button b{display:none}
   .bb__instrument { left: 6px; right: 6px; }.bb__play { min-width: 92px; padding: 0 12px; }.bb__again { font-size: 12px; }.bb__control { grid-template-columns: 102px minmax(0,1fr); gap: 7px; }.bb__control small { display: none; }
 }
 

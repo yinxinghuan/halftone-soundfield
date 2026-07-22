@@ -13,6 +13,8 @@
 - `src/BoingBox.tsx`：顶层状态机、录音/示例入口、动态转场、播放与三项参数 UI、轻量 zh/en 文案。
 - `src/SoftBoxStage.tsx`：Three.js 场景、盒体拖动、7 颗声音体物理、碰撞检测、声谱/刻度贴图与响应式相机。
 - `src/AudioEngine.ts`：音频图、示例 Buffer、录音解码、碰撞采样颗粒、共鸣和频谱读取。
+- `src/social/`：作品模型、跨用户墙聚合、声音标本卡片、详情、点赞与留言。
+- `src/shared/runtime` / `save` / `social`：Aigram 桥、公开音频上传、云存档和公共留言工具。
 - `src/boing-box.less`：视觉令牌、录音入口、底部仪器条、短屏/窄屏与降低动效规则。
 - `src/main.tsx`：React 挂载入口。
 - `doc/requirements.md` / `doc/visual.md`：玩法蓝图与视觉系统。
@@ -27,6 +29,8 @@
 `SoftBoxStage` 在盒体局部坐标内维护 7 组位置、速度、半径与撞击形变量。每帧把世界向下方向转换为盒体局部重力，执行边界反射和球体互斥；拖动直接改变盒体姿态，轻点为所有声音体注入冲量。碰撞回调同时驱动软体压扁、发光、盒体脉冲和 `AudioEngine.hit()`，保证声音与画面来自同一个事件。
 
 `AudioEngine` 不循环叠播完整录音。每颗声音体持有稳定切片位置，碰撞时只播放 75–235 ms 的短颗粒，并按声音体编号映射到五声音阶。主输出经高低通、压缩、延迟与卷积混响后进入分析器；盒面短柱与刻度每帧读取真实输出频谱。
+
+`AudioEngine.recordPreview()` 把分析器临时接到 `MediaStreamAudioDestinationNode`，在物理继续运行时录制 5 秒最终碰撞混音，经 `useUpload` 上传；原始录音 Buffer 不上传。社交状态通过 `useGameSave<SoundSocialSave>` 与一次性 seed 的 `socialMirror` 读写，确保多次发布、点赞和留言不会互相覆盖。`useSoundWall` 展开所有返回存档的完整 `works` 数组，以作品 ID 合并自己的乐观条目并聚合 likes 与 guestbook messages。作品墙与公共留言受平台最近约 6 位活跃用户读取窗口限制，属于 best-effort；点赞和留言通知通过平台 notify 可靠送达作者。
 
 布局为响应式 DOM + WebGL 混合界面。ResizeObserver 同步渲染尺寸并根据舞台宽高比调整相机距离；390 × 844、320 × 568、桌面宽屏分别有内部重排规则，不依赖整页缩放。
 

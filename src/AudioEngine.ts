@@ -132,6 +132,31 @@ export class AudioEngine {
     return { level: sum / (16 * 255), bins: this.frequencyData }
   }
 
+  async recordPreview(durationMs = 5000): Promise<Blob> {
+    if (typeof MediaRecorder === 'undefined') throw new Error('preview recorder unavailable')
+    await this.unlock()
+    if (!this.analyser) throw new Error('audio graph unavailable')
+    const destination = this.context.createMediaStreamDestination()
+    this.analyser.connect(destination)
+    const candidates = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm']
+    const mimeType = candidates.find(type => MediaRecorder.isTypeSupported(type))
+    const recorder = mimeType ? new MediaRecorder(destination.stream, { mimeType }) : new MediaRecorder(destination.stream)
+    const chunks: BlobPart[] = []
+    recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data) }
+    const done = new Promise<Blob>((resolve, reject) => {
+      recorder.onerror = () => reject(new Error('preview recording failed'))
+      recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || mimeType || 'audio/webm' }))
+    })
+    recorder.start(200)
+    await new Promise(resolve => window.setTimeout(resolve, durationMs))
+    recorder.stop()
+    const blob = await done
+    this.analyser.disconnect(destination)
+    destination.stream.getTracks().forEach(track => track.stop())
+    if (!blob.size) throw new Error('empty preview')
+    return blob
+  }
+
   async close() {
     await this.ctx?.close()
     this.ctx = null
