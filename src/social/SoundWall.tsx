@@ -84,7 +84,7 @@ export default function SoundWall(props: Props) {
     <p className="sw__intro">{copy.intro}</p>
     {!isInAigram && <p className="sw__platformNote">{copy.platform}</p>}
     <div className="sw__feed">
-      {!loaded && <p className="sw__empty">{copy.loading}</p>}
+      {!loaded && !entries.length && <p className="sw__empty">{copy.loading}</p>}
       {loaded && !entries.length && <p className="sw__empty">{copy.empty}</p>}
       {entries.map(entry => {
         const likes = likesByWork.get(entry.work.id)?.size ?? 0

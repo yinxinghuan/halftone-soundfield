@@ -30,7 +30,7 @@
 
 `AudioEngine` 不循环叠播完整录音。解码后先按峰值与 RMS 做最多 8 倍的安全响度归一化，再把录音分成七段并为每段搜索 90 ms 能量最高的采样热点。每颗声音体固定持有一个热点，碰撞时播放 110–320 ms 短颗粒，并按编号映射到五声音阶；每次碰撞额外叠加同音高的短正弦共鸣，使轻声录音也有清楚的撞击起音。主输出经高低通、动态压缩、延迟与卷积混响后进入分析器；盒面短柱与刻度每帧读取真实输出频谱。
 
-`AudioEngine.recordPreview()` 把分析器临时接到 `MediaStreamAudioDestinationNode`，在物理继续运行时录制 5 秒最终碰撞混音，经 `useUpload` 上传；原始录音 Buffer 不上传。社交状态通过 `useGameSave<SoundSocialSave>` 与一次性 seed 的 `socialMirror` 读写，确保多次发布、点赞和留言不会互相覆盖。`useSoundWall` 展开所有返回存档的完整 `works` 数组，以作品 ID 合并自己的乐观条目并聚合 likes 与 guestbook messages。作品墙与公共留言受平台最近约 6 位活跃用户读取窗口限制，属于 best-effort；点赞和留言通知通过平台 notify 可靠送达作者。
+`AudioEngine.recordPreview()` 把分析器临时接到 `MediaStreamAudioDestinationNode`，在物理继续运行时录制 5 秒最终碰撞混音，经 `useUpload` 上传；原始录音 Buffer 不上传。社交状态通过 `useGameSave<SoundSocialSave>` 与一次性 seed 的 `socialMirror` 读写，确保多次发布、点赞和留言不会互相覆盖。`useSoundWall` 展开所有返回存档的完整 `works` 数组，以作品 ID 合并自己的乐观条目并聚合 likes 与 guestbook messages。只要本地镜像已有作品，作品墙就直接渲染并取消云端加载占位，因此新发布会立即出现在第一张；后台刷新仅补齐跨用户数据。作品墙与公共留言受平台最近约 6 位活跃用户读取窗口限制，属于 best-effort；点赞和留言通知通过平台 notify 可靠送达作者。
 
 布局为响应式 DOM + WebGL 混合界面。ResizeObserver 同步渲染尺寸并根据舞台宽高比调整相机距离；390 × 844、320 × 568、桌面宽屏分别有内部重排规则，不依赖整页缩放。
 
