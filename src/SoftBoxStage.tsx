@@ -107,26 +107,27 @@ export function SoftBoxStage({ audio, running, settings, onFirstCollision, onImp
 
     const boxGeometry = new RoundedBoxGeometry(2.22, 2.22, 2.22, 12, 0.17)
     const glass = new THREE.MeshPhysicalMaterial({
-      color: 0xe7eef8,
-      roughness: 0.06,
+      color: 0xd4deed,
+      roughness: 0.12,
       metalness: 0,
-      transmission: 0.92,
+      transmission: 0.78,
       transparent: true,
-      opacity: 0.22,
-      thickness: 1.55,
+      opacity: 0.36,
+      thickness: 1.72,
       ior: 1.45,
       attenuationColor: new THREE.Color(0xccd2e4),
-      attenuationDistance: 0.85,
+      attenuationDistance: 0.52,
       clearcoat: 1,
-      clearcoatRoughness: 0.38,
-      envMapIntensity: 1.1,
+      clearcoatRoughness: 0.3,
+      envMapIntensity: 1.22,
+      specularIntensity: 1,
       side: THREE.DoubleSide,
       depthWrite: false,
     })
     const shell = new THREE.Mesh(boxGeometry, glass)
     shell.renderOrder = 4
     rig.add(shell)
-    const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.42 })
+    const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.52 })
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(boxGeometry, 24), edgeMaterial)
     edges.renderOrder = 5
     rig.add(edges)
