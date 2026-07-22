@@ -8,6 +8,7 @@ type Props = {
   running: boolean
   settings: SoundSettings
   onFirstCollision: () => void
+  onImpact: (index: number, strength: number) => void
 }
 
 type Orb = {
@@ -16,9 +17,10 @@ type Orb = {
   velocity: THREE.Vector3
   radius: number
   impact: number
+  halo: THREE.Mesh<THREE.IcosahedronGeometry, THREE.MeshBasicMaterial>
 }
 
-const BLUE = 0x1c69ae
+const BLUE = 0x1d6fb8
 const YELLOW = 0xffd23f
 
 function makeDotsTexture() {
@@ -53,16 +55,18 @@ function disposeTree(root: THREE.Object3D) {
   })
 }
 
-export function SoftBoxStage({ audio, running, settings, onFirstCollision }: Props) {
+export function SoftBoxStage({ audio, running, settings, onFirstCollision, onImpact }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const runningRef = useRef(running)
   const settingsRef = useRef(settings)
   const collisionRef = useRef(onFirstCollision)
+  const impactRef = useRef(onImpact)
 
   useEffect(() => { runningRef.current = running }, [running])
   useEffect(() => { settingsRef.current = settings; audio.updateSpace(settings.space) }, [audio, settings])
   useEffect(() => { collisionRef.current = onFirstCollision }, [onFirstCollision])
+  useEffect(() => { impactRef.current = onImpact }, [onImpact])
 
   useEffect(() => {
     const host = hostRef.current
@@ -75,51 +79,54 @@ export function SoftBoxStage({ audio, running, settings, onFirstCollision }: Pro
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.8))
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.14
+    renderer.toneMappingExposure = 1.05
 
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 30)
     camera.position.set(0, 0.18, 5.35)
-    scene.add(new THREE.HemisphereLight(0xf8fbff, 0x526984, 2.7))
-    const key = new THREE.DirectionalLight(0xffffff, 4.2); key.position.set(-3, 5, 4); scene.add(key)
-    const rim = new THREE.DirectionalLight(0x9cc8ff, 2.4); rim.position.set(4, 1, -2); scene.add(rim)
+    scene.add(new THREE.HemisphereLight(0xfafcff, 0x7894b8, 2.45))
+    const key = new THREE.DirectionalLight(0xffffff, 3.6); key.position.set(-3, 5, 4); scene.add(key)
+    const rim = new THREE.DirectionalLight(0xb4d5ff, 1.7); rim.position.set(4, 1, -2); scene.add(rim)
 
     const floor = new THREE.Mesh(
       new THREE.CircleGeometry(2.25, 64),
-      new THREE.MeshBasicMaterial({ color: 0x7e9fc3, transparent: true, opacity: 0.12, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: 0xa4b9d5, transparent: true, opacity: 0.1, depthWrite: false }),
     )
     floor.rotation.x = -Math.PI / 2; floor.position.y = -1.62; floor.scale.y = 0.25; scene.add(floor)
     const shadow = new THREE.Mesh(
       new THREE.CircleGeometry(1.38, 64),
-      new THREE.MeshBasicMaterial({ color: 0x243c5d, transparent: true, opacity: 0.18, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: 0x7189aa, transparent: true, opacity: 0.14, depthWrite: false }),
     )
     shadow.rotation.x = -Math.PI / 2; shadow.position.set(0, -1.59, 0.05); shadow.scale.y = 0.28; scene.add(shadow)
 
     const rig = new THREE.Group()
     rig.rotation.set(0.54, 0.73, -0.08)
     rig.position.y = 0.05
+    rig.scale.setScalar(0.7)
     scene.add(rig)
 
     const boxGeometry = new RoundedBoxGeometry(2.22, 2.22, 2.22, 12, 0.17)
     const glass = new THREE.MeshPhysicalMaterial({
-      color: 0xd7e5f6,
-      roughness: 0.09,
+      color: 0xe7eef8,
+      roughness: 0.06,
       metalness: 0,
-      transmission: 0.9,
+      transmission: 0.92,
       transparent: true,
-      opacity: 0.27,
-      thickness: 1.35,
-      ior: 1.36,
+      opacity: 0.22,
+      thickness: 1.55,
+      ior: 1.45,
+      attenuationColor: new THREE.Color(0xccd2e4),
+      attenuationDistance: 0.85,
       clearcoat: 1,
-      clearcoatRoughness: 0.22,
-      envMapIntensity: 1.5,
+      clearcoatRoughness: 0.38,
+      envMapIntensity: 1.1,
       side: THREE.DoubleSide,
       depthWrite: false,
     })
     const shell = new THREE.Mesh(boxGeometry, glass)
     shell.renderOrder = 4
     rig.add(shell)
-    const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xf8fbff, transparent: true, opacity: 0.58 })
+    const edgeMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.42 })
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(boxGeometry, 24), edgeMaterial)
     edges.renderOrder = 5
     rig.add(edges)
@@ -147,13 +154,16 @@ export function SoftBoxStage({ audio, running, settings, onFirstCollision }: Pro
       })
       const mesh = new THREE.Mesh(geometry, material)
       mesh.renderOrder = 2
+      const haloMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })
+      const halo = new THREE.Mesh(new THREE.IcosahedronGeometry(radius * 1.18, 2), haloMaterial)
+      halo.renderOrder = 3
       const angle = index / 7 * Math.PI * 2
       const position = new THREE.Vector3(Math.cos(angle) * 0.48, -0.5 + (index % 3) * 0.38, Math.sin(angle) * 0.42)
       const velocity = index === 0
         ? new THREE.Vector3(1.55, 0.82, 0.34)
         : new THREE.Vector3(Math.sin(index * 1.7) * 0.65, 0.15 + index * 0.035, Math.cos(index * 1.4) * 0.55)
-      mesh.position.copy(position); rig.add(mesh)
-      return { mesh, position, velocity, radius, impact: 0 }
+      mesh.position.copy(position); halo.position.copy(position); rig.add(mesh, halo)
+      return { mesh, halo, position, velocity, radius, impact: 0 }
     })
 
     let raf = 0
@@ -172,8 +182,11 @@ export function SoftBoxStage({ audio, running, settings, onFirstCollision }: Pro
     function collide(index: number, strength: number, pair = false) {
       const orb = orbs[index]
       orb.impact = Math.min(1, orb.impact + strength)
-      visualPulse = Math.min(1, visualPulse + strength * 0.7)
-      audio.hit(index, strength, settingsRef.current, pair)
+      const played = audio.hit(index, strength, settingsRef.current, pair)
+      if (played) {
+        visualPulse = Math.min(1, visualPulse + strength * 0.9)
+        impactRef.current(index, strength)
+      }
       if (!firstCollision) { firstCollision = true; collisionRef.current() }
     }
 
@@ -215,7 +228,11 @@ export function SoftBoxStage({ audio, running, settings, onFirstCollision }: Pro
           if (relative < 0) {
             const impulse = -(1 + bounce * 0.82) * relative * 0.5
             a.velocity.addScaledVector(normal, -impulse); b.velocity.addScaledVector(normal, impulse)
-            if (Math.abs(relative) > 0.26) collide((i + j) % orbs.length, Math.min(1, Math.abs(relative) / 2.2), true)
+            if (Math.abs(relative) > 0.26) {
+              const strength = Math.min(1, Math.abs(relative) / 2.2)
+              collide(i, strength, true)
+              collide(j, strength * 0.82, true)
+            }
           }
         }
       }
@@ -260,7 +277,10 @@ export function SoftBoxStage({ audio, running, settings, onFirstCollision }: Pro
         orb.impact *= Math.pow(0.08, dt)
         const squash = orb.impact * 0.28
         orb.mesh.position.copy(orb.position)
+        orb.halo.position.copy(orb.position)
         orb.mesh.scale.set(1 + squash * 0.55, 1 - squash, 1 + squash * 0.45)
+        orb.halo.scale.setScalar(1 + orb.impact * 1.5)
+        orb.halo.material.opacity = orb.impact * 0.34
         orb.mesh.rotation.x += dt * (0.4 + orb.velocity.length())
         orb.mesh.rotation.y += dt * 0.55
         orb.mesh.material.emissiveIntensity = 0.035 + orb.impact * 0.58
@@ -277,7 +297,7 @@ export function SoftBoxStage({ audio, running, settings, onFirstCollision }: Pro
       const rect = hostElement.getBoundingClientRect()
       renderer.setSize(Math.max(1, rect.width), Math.max(1, rect.height), false)
       camera.aspect = rect.width / Math.max(1, rect.height)
-      camera.position.z = camera.aspect < 0.86 ? 6.35 : camera.aspect < 1 ? 5.85 : 5.35
+      camera.position.z = camera.aspect < 0.86 ? 6.7 : camera.aspect < 1 ? 6.15 : 5.65
       camera.updateProjectionMatrix()
     }
     const observer = new ResizeObserver(resize); observer.observe(hostElement); resize()

@@ -15,6 +15,7 @@ export class AudioEngine {
   private reverbSend: GainNode | null = null
   private convolver: ConvolverNode | null = null
   private buffer: AudioBuffer | null = null
+  private grainOffsets = Array.from({ length: 7 }, (_, index) => index / 7)
   private activeVoices = 0
   private readonly lastHit = new Map<number, number>()
   private readonly frequencyData = new Uint8Array(32)
@@ -34,7 +35,9 @@ export class AudioEngine {
   }
 
   async decode(bytes: ArrayBuffer) {
-    this.buffer = await this.context.decodeAudioData(bytes.slice(0))
+    const decoded = await this.context.decodeAudioData(bytes.slice(0))
+    this.buffer = this.normaliseBuffer(decoded)
+    this.grainOffsets = this.findGrainOffsets(this.buffer)
   }
 
   setDemoBuffer() {
@@ -52,6 +55,7 @@ export class AudioEngine {
       data[i] = voice * (0.34 + pluck * 0.66) + (Math.random() * 2 - 1) * 0.018 * pluck
     }
     this.buffer = buffer
+    this.grainOffsets = this.findGrainOffsets(buffer)
   }
 
   updateSpace(value: number) {
@@ -80,19 +84,19 @@ export class AudioEngine {
   }
 
   hit(index: number, strength: number, settings: SoundSettings, pair = false) {
-    if (!this.buffer || !this.ctx || this.ctx.state !== 'running' || this.activeVoices >= 12) return
+    if (!this.buffer || !this.ctx || this.ctx.state !== 'running' || this.activeVoices >= 10) return false
     const nowMs = performance.now()
-    if (nowMs - (this.lastHit.get(index) ?? 0) < 55) return
+    if (nowMs - (this.lastHit.get(index) ?? 0) < 72) return false
     this.lastHit.set(index, nowMs)
 
     const ctx = this.ctx
-    const intensity = Math.min(1, Math.max(0.08, strength))
-    const pitchRange = 2 + settings.pitch / 100 * 12
+    const intensity = Math.min(1, Math.max(0.16, strength))
+    const pitchRange = 3 + settings.pitch / 100 * 10
     const semitone = (PENTATONIC[index % PENTATONIC.length] - 5) * pitchRange / 9
     const rate = 2 ** (semitone / 12)
-    const duration = Math.min(0.28, 0.075 + intensity * 0.16)
+    const duration = Math.min(0.34, 0.11 + intensity * 0.21)
     const maxOffset = Math.max(0, this.buffer.duration - duration - 0.01)
-    const offset = maxOffset * ((index * 0.173 + (pair ? 0.31 : 0.07)) % 1)
+    const offset = Math.min(maxOffset, this.grainOffsets[index % this.grainOffsets.length] * maxOffset)
 
     const source = ctx.createBufferSource()
     const envelope = ctx.createGain()
@@ -103,14 +107,14 @@ export class AudioEngine {
     source.buffer = this.buffer
     source.playbackRate.value = rate
     filter.type = 'lowpass'
-    filter.frequency.value = 1700 + (1 - intensity) * 4300
-    filter.Q.value = 0.8 + intensity * 2.6
+    filter.frequency.value = 2800 + intensity * 4700
+    filter.Q.value = 0.7 + intensity * 1.5
     pan.pan.value = Math.sin(index * 2.19) * 0.68
-    dry.gain.value = 0.18 + intensity * 0.18
-    send.gain.value = 0.07 + settings.space / 100 * 0.2
+    dry.gain.value = 0.66 + intensity * 0.28
+    send.gain.value = 0.08 + settings.space / 100 * 0.16
     const now = ctx.currentTime
     envelope.gain.setValueAtTime(0.0001, now)
-    envelope.gain.linearRampToValueAtTime(0.34 + intensity * 0.34, now + 0.012)
+    envelope.gain.linearRampToValueAtTime(0.58 + intensity * 0.34, now + 0.008)
     envelope.gain.exponentialRampToValueAtTime(0.0001, now + duration / rate)
     source.connect(filter).connect(envelope).connect(pan)
     pan.connect(dry).connect(this.master!)
@@ -121,7 +125,8 @@ export class AudioEngine {
     source.start(now, Math.min(offset, maxOffset), duration)
     source.stop(now + duration / rate + 0.03)
 
-    if (pair) this.resonance(index, intensity)
+    this.resonance(index, pair ? intensity * 0.78 : intensity)
+    return true
   }
 
   sample() {
@@ -170,7 +175,7 @@ export class AudioEngine {
     oscillator.type = 'sine'
     oscillator.frequency.value = 65.41 * 2 ** (PENTATONIC[index % PENTATONIC.length] / 12)
     gain.gain.setValueAtTime(0.0001, now)
-    gain.gain.linearRampToValueAtTime(0.018 + strength * 0.045, now + 0.012)
+    gain.gain.linearRampToValueAtTime(0.032 + strength * 0.075, now + 0.008)
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15 + strength * 0.2)
     oscillator.connect(gain).connect(this.master!)
     oscillator.start(now)
@@ -191,8 +196,8 @@ export class AudioEngine {
     this.convolver = this.ctx.createConvolver()
     highpass.type = 'highpass'; highpass.frequency.value = 80
     lowpass.type = 'lowpass'; lowpass.frequency.value = 6500
-    compressor.threshold.value = -20; compressor.ratio.value = 3; compressor.attack.value = 0.008; compressor.release.value = 0.22
-    this.master.gain.value = 0.74
+    compressor.threshold.value = -18; compressor.knee.value = 14; compressor.ratio.value = 3.5; compressor.attack.value = 0.004; compressor.release.value = 0.18
+    this.master.gain.value = 0.96
     this.analyser.fftSize = 64; this.analyser.smoothingTimeConstant = 0.68
     const impulse = this.ctx.createBuffer(2, Math.floor(this.ctx.sampleRate * 0.9), this.ctx.sampleRate)
     for (let channel = 0; channel < 2; channel += 1) {
@@ -205,6 +210,52 @@ export class AudioEngine {
     this.delay.connect(this.master)
     this.reverbSend.connect(this.convolver).connect(this.master)
     this.updateSpace(46)
+  }
+
+  private normaliseBuffer(source: AudioBuffer) {
+    let peak = 0
+    let energy = 0
+    let count = 0
+    for (let channel = 0; channel < source.numberOfChannels; channel += 1) {
+      const data = source.getChannelData(channel)
+      for (let i = 0; i < data.length; i += 1) {
+        const value = data[i]
+        peak = Math.max(peak, Math.abs(value))
+        energy += value * value
+        count += 1
+      }
+    }
+    const rms = Math.sqrt(energy / Math.max(1, count))
+    const gain = Math.min(8, 0.92 / Math.max(peak, 0.0001), 0.16 / Math.max(rms, 0.0001))
+    if (gain <= 1.04) return source
+    const target = this.context.createBuffer(source.numberOfChannels, source.length, source.sampleRate)
+    for (let channel = 0; channel < source.numberOfChannels; channel += 1) {
+      const input = source.getChannelData(channel)
+      const output = target.getChannelData(channel)
+      for (let i = 0; i < input.length; i += 1) output[i] = Math.tanh(input[i] * gain)
+    }
+    return target
+  }
+
+  private findGrainOffsets(buffer: AudioBuffer) {
+    const data = buffer.getChannelData(0)
+    const windowSize = Math.max(64, Math.floor(buffer.sampleRate * 0.09))
+    const offsets: number[] = []
+    for (let voice = 0; voice < 7; voice += 1) {
+      const regionStart = Math.floor(data.length * voice / 7)
+      const regionEnd = Math.max(regionStart + windowSize, Math.floor(data.length * (voice + 1) / 7) - windowSize)
+      let best = regionStart
+      let bestEnergy = -1
+      const step = Math.max(32, Math.floor(windowSize / 3))
+      for (let start = regionStart; start <= regionEnd; start += step) {
+        let energy = 0
+        const end = Math.min(data.length, start + windowSize)
+        for (let i = start; i < end; i += 8) energy += data[i] * data[i]
+        if (energy > bestEnergy) { bestEnergy = energy; best = start }
+      }
+      offsets.push(best / Math.max(1, data.length - windowSize))
+    }
+    return offsets
   }
 }
 

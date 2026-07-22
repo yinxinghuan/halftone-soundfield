@@ -26,9 +26,9 @@
 
 入口会检查 `document.permissionsPolicy` / `featurePolicy` 的 `microphone` 能力，把 Mini App 宿主阻止与用户拒绝分开反馈。游戏页面不能自行突破父容器策略：宿主 iframe 需要 `allow="microphone; autoplay"`，受限的 `Permissions-Policy` 响应头需要加入游戏 origin；iOS WKWebView 宿主还需声明麦克风用途并处理媒体采集授权。
 
-`SoftBoxStage` 在盒体局部坐标内维护 7 组位置、速度、半径与撞击形变量。每帧把世界向下方向转换为盒体局部重力，执行边界反射和球体互斥；拖动直接改变盒体姿态，轻点为所有声音体注入冲量。碰撞回调同时驱动软体压扁、发光、盒体脉冲和 `AudioEngine.hit()`，保证声音与画面来自同一个事件。
+`SoftBoxStage` 在盒体局部坐标内维护 7 组位置、速度、半径与撞击形变量。每帧把世界向下方向转换为盒体局部重力，执行边界反射和球体互斥；拖动直接改变盒体姿态，轻点为所有声音体注入冲量。七颗球按索引固定为七个声部；只有 `AudioEngine.hit()` 真正接受的碰撞才会同步驱动该球压扁、发光、扩散光晕、盒体脉冲和 DOM 声部指示器，避免无声的装饰闪动。
 
-`AudioEngine` 不循环叠播完整录音。每颗声音体持有稳定切片位置，碰撞时只播放 75–235 ms 的短颗粒，并按声音体编号映射到五声音阶。主输出经高低通、压缩、延迟与卷积混响后进入分析器；盒面短柱与刻度每帧读取真实输出频谱。
+`AudioEngine` 不循环叠播完整录音。解码后先按峰值与 RMS 做最多 8 倍的安全响度归一化，再把录音分成七段并为每段搜索 90 ms 能量最高的采样热点。每颗声音体固定持有一个热点，碰撞时播放 110–320 ms 短颗粒，并按编号映射到五声音阶；每次碰撞额外叠加同音高的短正弦共鸣，使轻声录音也有清楚的撞击起音。主输出经高低通、动态压缩、延迟与卷积混响后进入分析器；盒面短柱与刻度每帧读取真实输出频谱。
 
 `AudioEngine.recordPreview()` 把分析器临时接到 `MediaStreamAudioDestinationNode`，在物理继续运行时录制 5 秒最终碰撞混音，经 `useUpload` 上传；原始录音 Buffer 不上传。社交状态通过 `useGameSave<SoundSocialSave>` 与一次性 seed 的 `socialMirror` 读写，确保多次发布、点赞和留言不会互相覆盖。`useSoundWall` 展开所有返回存档的完整 `works` 数组，以作品 ID 合并自己的乐观条目并聚合 likes 与 guestbook messages。作品墙与公共留言受平台最近约 6 位活跃用户读取窗口限制，属于 best-effort；点赞和留言通知通过平台 notify 可靠送达作者。
 

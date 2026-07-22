@@ -23,6 +23,7 @@ const zh = {
   ready: '拖动盒子改变重力 · 轻点盒子弹起声音', waiting: '等待第一次碰撞…', heard: '声音已装入盒中',
   play: '播放', pause: '暂停', rerecord: '重新录音', bounce: '弹性', pitch: '音高', space: '空间',
   hintBounce: '碰撞密度', hintPitch: '转调幅度', hintSpace: '回声长度',
+  voice: '碰撞声部',
   wall: '作品墙', publish: '发布', making: '制作中', publishTitle: '发布当前声音软盒？',
   publishPrivacy: '我们会录制当前碰撞与效果器输出的约 5 秒成品预览。麦克风原始录音不会上传。', cancel: '取消', consent: '同意并发布', recordingPreview: '正在录制 5 秒预览…', close: '关闭',
 }
@@ -37,6 +38,7 @@ const en: Copy = {
   ready: 'Drag to change gravity · tap to toss the sounds', waiting: 'Waiting for the first collision…', heard: 'Sound is inside the box',
   play: 'Play', pause: 'Pause', rerecord: 'Record again', bounce: 'Bounce', pitch: 'Pitch', space: 'Space',
   hintBounce: 'collision rate', hintPitch: 'transpose range', hintSpace: 'echo length',
+  voice: 'Collision voice',
   wall: 'Sound wall', publish: 'Publish', making: 'Making', publishTitle: 'Publish this sound box?',
   publishPrivacy: 'We will capture a 5-second preview of the processed collision mix. Your original microphone recording is never uploaded.', cancel: 'Cancel', consent: 'Agree and publish', recordingPreview: 'Capturing 5-second preview…', close: 'Close',
 }
@@ -86,6 +88,7 @@ export default function BoingBox() {
   const [permissionReady, setPermissionReady] = useState(false)
   const [running, setRunning] = useState(false)
   const [collided, setCollided] = useState(false)
+  const [lastImpact, setLastImpact] = useState({ index: -1, strength: 0, sequence: 0 })
   const [settings, setSettings] = useState<SoundSettings>({ bounce: 66, pitch: 58, space: 46 })
   const { savedData: socialSaved, persist: persistSocial } = useGameSave<SoundSocialSave>('halftone-soundfield-social')
   const [socialMirror, setSocialMirror] = useState<SoundSocialSave | undefined>(undefined)
@@ -118,7 +121,7 @@ export default function BoingBox() {
   }, [audio])
 
   function enterStudio() {
-    setCollided(false); setPhase('entering'); setRunning(true)
+    setCollided(false); setLastImpact({ index: -1, strength: 0, sequence: 0 }); setPhase('entering'); setRunning(true)
     transitionRef.current = window.setTimeout(() => { setPhase('studio'); transitionRef.current = null }, 620)
   }
 
@@ -249,7 +252,8 @@ export default function BoingBox() {
     </header>
 
     {studioVisible && <section className="bb__studio" aria-label={copy.title}>
-      <SoftBoxStage audio={audio} running={running} settings={settings} onFirstCollision={() => setCollided(true)} />
+      <SoftBoxStage audio={audio} running={running} settings={settings} onFirstCollision={() => setCollided(true)} onImpact={(index, strength) => setLastImpact(current => ({ index, strength, sequence: current.sequence + 1 }))} />
+      <div className="bb__voiceMap" aria-live="polite"><span>{copy.voice}</span><div>{Array.from({ length: 7 }, (_, index) => <i key={index === lastImpact.index ? `${index}-${lastImpact.sequence}` : index} className={index === lastImpact.index ? 'is-hit' : ''} style={{ '--hit': Math.max(.35, lastImpact.strength) } as CSSProperties} />)}</div></div>
       <p className="bb__gestureHint">{copy.ready}</p>
       <div className="bb__instrument">
         <div className="bb__transport">
